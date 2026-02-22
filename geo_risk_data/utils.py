@@ -71,7 +71,7 @@ def get_cache_dir(cache_dir=None):
     return cache_path
 
 
-def fetch_census_counties(state_code, timeout=30):
+##def fetch_census_counties(state_code, timeout=30):
     """
     Fetch all counties for a state from Census Bureau API.
     
@@ -134,7 +134,112 @@ def fetch_census_counties(state_code, timeout=30):
     except (KeyError, IndexError) as e:
         logger.warning(f"Failed to parse Census API response for {state_code}: {str(e)}")
         return []
+
+  # Expected county counts for validation
+EXPECTED_COUNTY_COUNTS = {
+    'AL': 67, 'AK': 30, 'AZ': 15, 'AR': 75, 'CA': 58, 'CO': 64,
+    'CT': 8, 'DE': 3, 'FL': 67, 'GA': 159, 'HI': 5, 'ID': 44,
+    'IL': 102, 'IN': 92, 'IA': 99, 'KS': 105, 'KY': 120, 'LA': 64,
+    'ME': 16, 'MD': 24, 'MA': 14, 'MI': 83, 'MN': 87, 'MS': 82,
+    'MO': 115, 'MT': 56, 'NE': 93, 'NV': 17, 'NH': 10, 'NJ': 21,
+    'NM': 33, 'NY': 62, 'NC': 100, 'ND': 53, 'OH': 88, 'OK': 77,
+    'OR': 36, 'PA': 67, 'RI': 5, 'SC': 46, 'SD': 66, 'TN': 95,
+    'TX': 254, 'UT': 29, 'VT': 14, 'VA': 133, 'WA': 39, 'WV': 55,
+    'WI': 72, 'WY': 23, 'DC': 1, 'PR': 78, 'VI': 3
+}
+
+
+def fetch_census_counties(state_code, timeout=30):
+    """
+    Fetch all counties for a state from Census Bureau API.
     
+    Args:
+        state_code: 2-letter state code
+        timeout: Request timeout in seconds
+        
+    Returns:
+        List of dicts with county information
+        
+    Raises:
+        requests.RequestException: If Census API request fails
+    """
+    logger = logging.getLogger(__name__)
+    
+    state_fips = STATE_FIPS.get(state_code)
+    state_name = STATE_NAMES.get(state_code)
+    
+    if not state_fips:
+        logger.warning(f"Unknown state code: {state_code}")
+        return []
+    
+    url = f"https://api.census.gov/data/2020/dec/pl?get=NAME&for=county:*&in=state:{state_fips}"
+    
+    # Try Census API with retry
+    for attempt in range(3):
+        try:
+            logger.debug(f"Fetching counties for {state_code} from Census API (attempt {attempt + 1}/3)...")
+            response = requests.get(url, timeout=timeout)
+            response.raise_for_status()
+            
+            # Parse JSON with error handling
+            try:
+                data = response.json()
+            except ValueError as e:
+                if attempt < 2:  # Retry
+                    logger.debug(f"Invalid JSON for {state_code}, retrying...")
+                    import time
+                    time.sleep(1)
+                    continue
+                else:
+                    logger.warning(f"Invalid JSON response for {state_code}: {str(e)}")
+                    logger.debug(f"Response content: {response.text[:200]}")
+                    return []
+            
+            # Parse counties
+            counties = []
+            
+            for row in data[1:]:  # Skip header
+                try:
+                    county_name = row[0].replace(' County', '').replace(' Parish', '')
+                    if ', ' + state_name in county_name:
+                        county_name = county_name.replace(', ' + state_name, '')
+                    
+                    county_fips = state_fips + row[2]
+                    
+                    counties.append({
+                        'state_id': state_code,
+                        'state_name': state_name,
+                        'county_fips': county_fips,
+                        'county_name': county_name
+                    })
+                except (KeyError, IndexError) as e:
+                    logger.warning(f"Failed to parse county row for {state_code}: {row}")
+                    continue
+            
+            # Validate we got expected number of counties
+            expected = EXPECTED_COUNTY_COUNTS.get(state_code, 0)
+            if expected > 0 and len(counties) < expected:
+                logger.warning(
+                    f"Retrieved {len(counties)}/{expected} counties for {state_code} "
+                    f"(missing {expected - len(counties)})"
+                )
+            else:
+                logger.debug(f"✓ Retrieved {len(counties)} counties for {state_code}")
+            
+            return counties
+            
+        except requests.RequestException as e:
+            if attempt < 2:  # Retry
+                logger.debug(f"Request failed for {state_code}, retrying...")
+                import time
+                time.sleep(1)
+                continue
+            else:
+                logger.error(f"Census API request failed for {state_code} after 3 attempts: {str(e)}")
+                return []
+    
+    return []
+
     
 def get_current_date():
     """Get current date in YYYY-MM-DD format."""
