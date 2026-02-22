@@ -101,7 +101,14 @@ def fetch_census_counties(state_code, timeout=30):
         response = requests.get(url, timeout=timeout)
         response.raise_for_status()
         
-        data = response.json()
+        # Parse JSON with error handling
+        try:
+            data = response.json()
+        except ValueError as e:
+            logger.warning(f"Invalid JSON response for {state_code}: {str(e)}")
+            logger.debug(f"Response content: {response.text[:200]}")
+            return []
+        
         counties = []
         
         for row in data[1:]:  # Skip header
@@ -122,13 +129,13 @@ def fetch_census_counties(state_code, timeout=30):
         return counties
         
     except requests.RequestException as e:
-        logger.error(f"Census API request failed for {state_code}: {str(e)}")
-        raise
-    except (ValueError, KeyError, IndexError) as e:
-        logger.error(f"Failed to parse Census API response for {state_code}: {str(e)}")
+        logger.warning(f"Census API request failed for {state_code}: {str(e)}")
+        return []  # Return empty list instead of raising
+    except (KeyError, IndexError) as e:
+        logger.warning(f"Failed to parse Census API response for {state_code}: {str(e)}")
         return []
-
-
+    
+    
 def get_current_date():
     """Get current date in YYYY-MM-DD format."""
     return datetime.now().strftime('%Y-%m-%d')
