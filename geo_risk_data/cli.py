@@ -2,6 +2,23 @@
 Command-line interface for geo-risk-data
 """
 
+def main():
+    parser = argparse.ArgumentParser(...)
+    
+    # Make mode optional instead of required
+    mode_group = parser.add_mutually_exclusive_group(required=False)  # Changed to False
+    mode_group.add_argument('--hifca', ...)
+    mode_group.add_argument('--hidta', ...)
+    mode_group.add_argument('--both', ...)
+    
+    parser.add_argument('--output', '-o', type=str, required=False)  # Changed to False
+    
+    args = parser.parse_args()
+    
+    # If no mode specified, run interactive
+    if not any([args.hifca, args.hidta, args.both]):
+        return interactive_mode()
+
 import argparse
 import sys
 import logging
