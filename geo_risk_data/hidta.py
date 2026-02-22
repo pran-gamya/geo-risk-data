@@ -105,37 +105,40 @@ class HIDTAScraper:
             logger.debug(f"Processing {region}...")
             region_count = 0
             
-            for state_code, counties in states.items():
-                
-                if 'ALL' in counties:
-                    # Get all counties for state
-                    state_counties = fetch_census_counties(state_code)
-                    for c in state_counties:
-                        all_counties.append(create_county_dict(
-                            c, source_url=self.SOURCE_URL
-                        ))
-                    region_count += len(state_counties)
-                    logger.debug(f"  {state_code}: {len(state_counties)} counties (ALL)")
-                
-                else:
-                    # Get specific counties
-                    state_counties = fetch_census_counties(state_code)
-                    county_map = {c['county_name'].lower(): c for c in state_counties}
-                    
-                    matched = 0
-                    for county_name in counties:
-                        key = county_name.lower()
-                        if key in county_map:
-                            all_counties.append(create_county_dict(
-                                county_map[key], source_url=self.SOURCE_URL
-                            ))
-                            matched += 1
-                        else:
-                            logger.warning(f"  Could not find {county_name} in {state_code}")
-                    
-                    region_count += matched
-                    logger.debug(f"  {state_code}: {matched}/{len(counties)} counties")
             
+        for state_code, counties in states.items():
+            
+            if 'ALL' in counties:
+                state_counties = fetch_census_counties(state_code)
+                
+                if len(state_counties) == 0:
+                    logger.error(f"  {state_code}: FAILED to fetch counties (ALL)")
+                else:
+                    all_counties.extend(state_counties)
+                    region_count += len(state_counties)
+                    logger.info(f"  {state_code}: {len(state_counties)} counties (ALL)")
+            
+            else:
+                state_counties = fetch_census_counties(state_code)
+                
+                if len(state_counties) == 0:
+                    logger.error(f"  {state_code}: FAILED to fetch state counties")
+                    continue
+                
+                county_map = {c['county_name'].lower(): c for c in state_counties}
+                
+                matched = 0
+                for county_name in counties:
+                    key = county_name.lower()
+                    if key in county_map:
+                        all_counties.append(county_map[key])
+                        matched += 1
+                    else:
+                        logger.warning(f"  Could not find {county_name} in {state_code}")
+                
+                region_count += matched
+                logger.info(f"  {state_code}: {matched}/{len(counties)} counties")
+                    
             region_stats[region] = region_count
         
         # Create DataFrame
